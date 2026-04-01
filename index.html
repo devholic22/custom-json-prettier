@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>JSON Tree Viewer</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f6f8fa;color:#24292f;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+
+#header{padding:10px 16px;border-bottom:1px solid #d0d7de;background:#fff;display:flex;align-items:center;gap:10px;flex-shrink:0}
+#header h1{font-size:14px;font-weight:600}
+#header h1 span{color:#0969da}
+#stats{font-size:12px;color:#57606a;margin-left:auto;display:none}
+
+#main{display:flex;flex:1;overflow:hidden}
+
+/* LEFT */
+#left{display:flex;flex-direction:column;width:300px;min-width:200px;border-right:1px solid #d0d7de;background:#fff;flex-shrink:0;overflow:hidden}
+#input-wrap{padding:10px;flex:1;display:flex;flex-direction:column;gap:8px;overflow:hidden}
+#input-area{flex:1;resize:none;font-family:'SF Mono','Fira Code',monospace;font-size:12px;padding:10px;border:1px solid #d0d7de;border-radius:6px;background:#f6f8fa;color:#24292f;outline:none;line-height:1.6;min-height:0}
+#input-area:focus{border-color:#0969da;background:#fff}
+#input-area::placeholder{color:#8c959f}
+#btn-parse{padding:7px;font-size:13px;font-weight:500;background:#0969da;color:#fff;border:none;border-radius:6px;cursor:pointer}
+#btn-parse:hover{background:#0550ae}
+#error{font-size:12px;color:#cf222e;padding:8px 10px;background:#fff0f0;border:1px solid #ffcdd2;border-radius:6px;display:none;line-height:1.5}
+
+/* MASK PANEL */
+#mask-section{border-top:1px solid #d0d7de;background:#f6f8fa;flex-shrink:0}
+#mask-header{padding:8px 12px;display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;font-weight:500;color:#57606a;user-select:none}
+#mask-header:hover{color:#24292f}
+#mask-toggle-icon{font-size:10px;transition:transform .2s}
+#mask-toggle-icon.open{transform:rotate(90deg)}
+#mask-body{display:none;padding:0 10px 10px;display:flex;flex-direction:column;gap:6px}
+#mask-body.hidden{display:none}
+#mask-list{display:flex;flex-direction:column;gap:4px;max-height:140px;overflow-y:auto}
+.mask-item{display:flex;align-items:center;gap:4px;background:#fff;border:1px solid #d0d7de;border-radius:5px;padding:4px 8px;font-size:12px;font-family:'SF Mono','Fira Code',monospace;color:#24292f}
+.mask-item span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mask-remove{cursor:pointer;color:#8c959f;font-size:14px;line-height:1;flex-shrink:0}
+.mask-remove:hover{color:#cf222e}
+#mask-input-row{display:flex;gap:6px}
+#mask-input{flex:1;font-size:12px;font-family:'SF Mono','Fira Code',monospace;padding:5px 8px;border:1px solid #d0d7de;border-radius:5px;outline:none;background:#fff;color:#24292f}
+#mask-input:focus{border-color:#0969da}
+#mask-input::placeholder{color:#8c959f;font-family:-apple-system,sans-serif}
+#btn-add-mask{font-size:12px;padding:5px 10px;background:#fff;border:1px solid #d0d7de;border-radius:5px;cursor:pointer;color:#24292f;white-space:nowrap}
+#btn-add-mask:hover{background:#f3f4f6}
+
+/* RIGHT */
+#right{flex:1;display:flex;flex-direction:column;overflow:hidden;background:#fff}
+#toolbar{padding:8px 12px;border-bottom:1px solid #d0d7de;display:flex;gap:6px;align-items:center;flex-shrink:0;background:#f6f8fa}
+#toolbar button{font-size:12px;padding:4px 10px;background:#fff;color:#24292f;border:1px solid #d0d7de;border-radius:5px;cursor:pointer}
+#toolbar button:hover{background:#f3f4f6;border-color:#8c959f}
+#search{margin-left:auto;font-size:12px;padding:4px 10px;background:#fff;color:#24292f;border:1px solid #d0d7de;border-radius:5px;outline:none;width:160px}
+#search:focus{border-color:#0969da}
+#search::placeholder{color:#8c959f}
+#match-count{font-size:12px;color:#57606a;white-space:nowrap}
+#btn-copy{font-size:12px;padding:4px 12px;background:#2da44e;color:#fff;border:none;border-radius:5px;cursor:pointer;margin-left:4px;white-space:nowrap}
+#btn-copy:hover{background:#218838}
+#btn-copy.copied{background:#57606a}
+
+#tree-wrap{flex:1;overflow:auto;padding:12px 16px}
+#tree{font-family:'SF Mono','Fira Code',monospace;font-size:13px;line-height:1.9}
+#empty{display:flex;align-items:center;justify-content:center;height:100%;color:#8c959f;font-size:13px}
+
+.node{cursor:default}
+.key-line{display:inline-flex;align-items:center;gap:3px;padding:0 4px;border-radius:4px;cursor:pointer}
+.key-line:hover{background:#f6f8fa}
+.toggle{width:14px;text-align:center;font-size:10px;color:#8c959f;flex-shrink:0}
+.expanded>.key-line>.toggle::before{content:'▼'}
+.collapsed>.key-line>.toggle::before{content:'▶'}
+.leaf-indent{display:inline-block;width:14px}
+.key{color:#0550ae}
+.colon{color:#8c959f}
+.str{color:#0a3069}
+.num{color:#953800}
+.bool{color:#6639ba}
+.null-v{color:#8c959f;font-style:italic}
+.masked{color:#cf222e;font-style:italic;letter-spacing:1px}
+.brace{color:#57606a}
+.idx{color:#8c959f}
+.count{font-size:11px;color:#8c959f;margin-left:3px}
+.children{padding-left:20px;border-left:1px solid #e4e7ea;margin-left:5px}
+.collapsed>.children{display:none}
+.close-line{color:#57606a;padding-left:17px}
+.hl{background:#fff3b0;border-radius:2px}
+</style>
+</head>
+<body>
+
+<div id="header">
+  <svg width="15" height="15" viewBox="0 0 16 16" fill="#0969da"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
+  <h1><span>JSON</span> Tree Viewer</h1>
+  <div id="stats"></div>
+</div>
+
+<div id="main">
+  <div id="left">
+    <div id="input-wrap">
+      <textarea id="input-area" placeholder="JSON을 붙여넣으세요...&#10;&#10;Cmd+Enter로 파싱"></textarea>
+      <div id="error"></div>
+      <button id="btn-parse">파싱하기</button>
+    </div>
+
+    <div id="mask-section">
+      <div id="mask-header">
+        <span id="mask-toggle-icon">▶</span>
+        <span>마스킹 필드</span>
+        <span id="mask-badge" style="margin-left:4px;background:#ddf4ff;color:#0969da;font-size:11px;padding:1px 6px;border-radius:10px;display:none">0</span>
+      </div>
+      <div id="mask-body" class="hidden">
+        <div id="mask-list"></div>
+        <div id="mask-input-row">
+          <input id="mask-input" type="text" placeholder="예: address, password, token">
+          <button id="btn-add-mask">추가</button>
+        </div>
+        <div style="font-size:11px;color:#8c959f;line-height:1.5">
+          키 이름만 입력하면 위치에 상관없이 모두 마스킹돼요
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="right">
+    <div id="toolbar">
+      <button id="btn-expand">모두 펼치기</button>
+      <button id="btn-collapse">모두 접기</button>
+      <input id="search" type="text" placeholder="키 또는 값 검색...">
+      <span id="match-count"></span>
+      <button id="btn-copy">복사</button>
+    </div>
+    <div id="tree-wrap">
+      <div id="empty">왼쪽에 JSON을 붙여넣고 파싱하세요</div>
+      <div id="tree" style="display:none"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const inp = document.getElementById('input-area');
+const errEl = document.getElementById('error');
+const treeEl = document.getElementById('tree');
+const emptyEl = document.getElementById('empty');
+const statsEl = document.getElementById('stats');
+const searchEl = document.getElementById('search');
+const matchEl = document.getElementById('match-count');
+const maskInput = document.getElementById('mask-input');
+const maskList = document.getElementById('mask-list');
+const maskBadge = document.getElementById('mask-badge');
+const maskBody = document.getElementById('mask-body');
+const maskIcon = document.getElementById('mask-toggle-icon');
+
+let parsedData = null;
+let maskPatterns = []; // [{raw, segments}]
+
+/* ── mask panel toggle ── */
+document.getElementById('mask-header').onclick = () => {
+  const open = !maskBody.classList.contains('hidden');
+  maskBody.classList.toggle('hidden', open);
+  maskIcon.classList.toggle('open', !open);
+};
+
+function addMask(raw) {
+  raw = raw.trim();
+  if (!raw || maskPatterns.find(m => m.raw === raw)) return;
+  maskPatterns.push({ raw });
+  renderMaskList();
+  if (parsedData !== null) rerender();
+}
+
+function removeMask(raw) {
+  maskPatterns = maskPatterns.filter(m => m.raw !== raw);
+  renderMaskList();
+  if (parsedData !== null) rerender();
+}
+
+function renderMaskList() {
+  maskList.innerHTML = '';
+  maskPatterns.forEach(m => {
+    const item = document.createElement('div');
+    item.className = 'mask-item';
+    item.innerHTML = `<span title="${m.raw}">${m.raw}</span><span class="mask-remove" data-raw="${m.raw}">×</span>`;
+    maskList.appendChild(item);
+  });
+  maskList.querySelectorAll('.mask-remove').forEach(btn => {
+    btn.onclick = () => removeMask(btn.dataset.raw);
+  });
+  const n = maskPatterns.length;
+  maskBadge.style.display = n ? 'inline' : 'none';
+  maskBadge.textContent = n;
+}
+
+document.getElementById('btn-add-mask').onclick = () => { addMask(maskInput.value); maskInput.value = ''; };
+maskInput.addEventListener('keydown', e => { if (e.key === 'Enter') { addMask(maskInput.value); maskInput.value = ''; } });
+
+/* ── check if a key should be masked ── */
+function shouldMask(pathKeys) {
+  const lastKey = pathKeys[pathKeys.length - 1];
+  return maskPatterns.some(m => m.raw === lastKey);
+}
+
+/* ── apply masking to cloned data ── */
+function applyMasks(data) {
+  return maskDeep(JSON.parse(JSON.stringify(data)), []);
+}
+
+function maskDeep(val, pathKeys) {
+  if (Array.isArray(val)) {
+    return val.map((v, i) => maskDeep(v, [...pathKeys, String(i)]));
+  }
+  if (val !== null && typeof val === 'object') {
+    const out = {};
+    for (const [k, v] of Object.entries(val)) {
+      const newPath = [...pathKeys, k];
+      if (shouldMask(newPath)) {
+        out[k] = '*****';
+      } else {
+        out[k] = maskDeep(v, newPath);
+      }
+    }
+    return out;
+  }
+  return val;
+}
+
+/* ── parse ── */
+document.getElementById('btn-parse').onclick = parse;
+inp.addEventListener('keydown', e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') parse(); });
+
+function parse() {
+  const raw = inp.value.trim();
+  if (!raw) return;
+  try {
+    parsedData = JSON.parse(raw);
+    errEl.style.display = 'none';
+    rerender();
+  } catch(e) {
+    errEl.textContent = '파싱 오류: ' + e.message;
+    errEl.style.display = 'block';
+  }
+}
+
+function rerender() {
+  if (parsedData === null) return;
+  const displayData = maskPatterns.length ? applyMasks(parsedData) : parsedData;
+
+  let keys=0, maxD=0, objs=0, arrs=0;
+  (function count(v,d){
+    if(v===null||typeof v!=='object') return;
+    maxD=Math.max(maxD,d);
+    if(Array.isArray(v)){arrs++;v.forEach(i=>count(i,d+1));}
+    else{objs++;Object.entries(v).forEach(([,val])=>{keys++;count(val,d+1);});}
+  })(parsedData,1);
+
+  statsEl.style.display='block';
+  statsEl.textContent=`키 ${keys.toLocaleString()}개 · 깊이 ${maxD} · 객체 ${objs.toLocaleString()} · 배열 ${arrs.toLocaleString()}`;
+
+  treeEl.innerHTML='';
+  treeEl.appendChild(buildNode(displayData, null, true));
+  emptyEl.style.display='none';
+  treeEl.style.display='block';
+  searchEl.value=''; matchEl.textContent='';
+}
+
+/* ── copy ── */
+document.getElementById('btn-copy').onclick = function() {
+  if (parsedData === null) return;
+  const out = maskPatterns.length ? applyMasks(parsedData) : parsedData;
+  navigator.clipboard.writeText(JSON.stringify(out, null, 2)).then(() => {
+    this.textContent = '복사됨 ✓';
+    this.classList.add('copied');
+    setTimeout(() => { this.textContent='복사'; this.classList.remove('copied'); }, 1500);
+  });
+};
+
+/* ── expand/collapse/search ── */
+document.getElementById('btn-expand').onclick = () =>
+  treeEl.querySelectorAll('.node.collapsed').forEach(n => n.classList.replace('collapsed','expanded'));
+document.getElementById('btn-collapse').onclick = () =>
+  treeEl.querySelectorAll('.node.expanded').forEach(n => {
+    if(n.parentElement.id !== 'tree') n.classList.replace('expanded','collapsed');
+  });
+searchEl.addEventListener('input', debounce(doSearch, 300));
+
+function debounce(fn,ms){let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),ms);};}
+
+function doSearch() {
+  const q = searchEl.value.trim().toLowerCase();
+  treeEl.querySelectorAll('.hl').forEach(el => el.classList.remove('hl'));
+  if (!q) { matchEl.textContent=''; return; }
+  let count=0;
+  treeEl.querySelectorAll('.key,.idx,.str,.num,.bool,.null-v,.masked').forEach(el => {
+    if (el.textContent.toLowerCase().includes(q)) {
+      el.classList.add('hl'); count++;
+      let p=el.parentElement;
+      while(p&&p.id!=='tree'){if(p.classList.contains('node'))p.classList.replace('collapsed','expanded');p=p.parentElement;}
+    }
+  });
+  matchEl.textContent = count>0 ? `${count}개 일치` : '없음';
+}
+
+/* ── build tree ── */
+function buildNode(val, key, isLast) {
+  if (val !== null && typeof val === 'object') {
+    const isArr = Array.isArray(val);
+    const entries = isArr ? val.map((v,i)=>[i,v]) : Object.entries(val);
+    const wrap = document.createElement('div');
+    wrap.className = 'node expanded';
+
+    const keyLine = document.createElement('div');
+    keyLine.className = 'key-line';
+    const tog = document.createElement('span'); tog.className='toggle'; keyLine.appendChild(tog);
+
+    if (key !== null) {
+      const k = document.createElement('span');
+      k.className = typeof key==='number' ? 'idx' : 'key';
+      k.textContent = typeof key==='number' ? String(key) : `"${key}"`;
+      keyLine.appendChild(k);
+      const c = document.createElement('span'); c.className='colon'; c.textContent=': '; keyLine.appendChild(c);
+    }
+
+    const open = document.createElement('span'); open.className='brace'; open.textContent=isArr?'[':'{'; keyLine.appendChild(open);
+    if (entries.length) { const cnt=document.createElement('span');cnt.className='count';cnt.textContent=String(entries.length);keyLine.appendChild(cnt); }
+    wrap.appendChild(keyLine);
+    keyLine.addEventListener('click', e => {
+      e.stopPropagation();
+      const x=wrap.classList.contains('expanded');
+      wrap.classList.toggle('expanded',!x); wrap.classList.toggle('collapsed',x);
+    });
+
+    if (entries.length) {
+      const ch = document.createElement('div'); ch.className='children';
+      entries.forEach(([k,v],i) => ch.appendChild(buildNode(v, k, i===entries.length-1)));
+      wrap.appendChild(ch);
+    }
+
+    const cl = document.createElement('div'); cl.className='close-line';
+    cl.textContent = (isArr?']':'}')+(!isLast?',':'');
+    wrap.appendChild(cl);
+    return wrap;
+  } else {
+    const wrap = document.createElement('div'); wrap.className='node';
+    const keyLine = document.createElement('div'); keyLine.className='key-line'; keyLine.style.cursor='default';
+    const ind = document.createElement('span'); ind.className='leaf-indent'; keyLine.appendChild(ind);
+
+    if (key !== null) {
+      const k = document.createElement('span');
+      k.className = typeof key==='number' ? 'idx' : 'key';
+      k.textContent = typeof key==='number' ? String(key) : `"${key}"`;
+      keyLine.appendChild(k);
+      const c = document.createElement('span'); c.className='colon'; c.textContent=': '; keyLine.appendChild(c);
+    }
+
+    const isMasked = typeof val==='string' && val==='*****';
+    const v = document.createElement('span');
+    if (isMasked) { v.className='masked'; v.textContent='*****'; }
+    else if (val===null) { v.className='null-v'; v.textContent='null'; }
+    else if (typeof val==='string') { v.className='str'; v.textContent=`"${val}"`; }
+    else if (typeof val==='number') { v.className='num'; v.textContent=String(val); }
+    else if (typeof val==='boolean') { v.className='bool'; v.textContent=String(val); }
+    keyLine.appendChild(v);
+
+    if (!isLast) { const cm=document.createElement('span');cm.className='brace';cm.textContent=',';keyLine.appendChild(cm); }
+    wrap.appendChild(keyLine);
+    return wrap;
+  }
+}
+</script>
+</body>
+</html>
